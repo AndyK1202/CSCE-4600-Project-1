@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sort"
 
 	"github.com/olekukonko/tablewriter"
 )
@@ -32,9 +33,13 @@ func main() {
 
 	//SJFSchedule(os.Stdout, "Shortest-job-first", processes)
 	//
+	
+
 	//SJFPrioritySchedule(os.Stdout, "Priority", processes)
 	//
+	
 	//RRSchedule(os.Stdout, "Round-robin", processes)
+	RRSchedule(os.Stdout, "Round-robin", processes)
 }
 
 func openProcessingFile(args ...string) (*os.File, func(), error) {
@@ -61,12 +66,16 @@ type (
 		ArrivalTime   int64
 		BurstDuration int64
 		Priority      int64
+		Exit int64
+		Turnaround int64
+		Wait int64
 	}
 	TimeSlice struct {
 		PID   int64
 		Start int64
 		Stop  int64
 	}
+	
 )
 
 //region Schedulers
@@ -132,6 +141,100 @@ func FCFSSchedule(w io.Writer, title string, processes []Process) {
 //func SJFSchedule(w io.Writer, title string, processes []Process) { }
 //
 //func RRSchedule(w io.Writer, title string, processes []Process) { }
+func RRSchedule(w io.Writer, title string, processes []Process) {
+    var clock int64 = 0
+    quantum := int64(4) // Making quantum an int64 for consistent types
+    var completed int64 = 0
+
+    // Sort processes based on ArrivalTime
+    sort.SliceStable(processes, func(i, j int) bool {
+        return processes[i].ArrivalTime < processes[j].ArrivalTime
+    })
+
+    var queue []Process
+    var gantt []TimeSlice
+    var schedule []Process
+    originalProcesses := make(map[int64]Process)
+
+    for _, p := range processes {
+        originalProcesses[p.ProcessID] = p
+    }
+
+    for len(processes) > 0 || len(queue) > 0 {
+        //Monitor fmt.Println("Inside main loop")
+        fmt.Printf("Processes length: %d, Queue length: %d\n", len(processes), len(queue))
+
+        for len(processes) > 0 && processes[0].ArrivalTime <= clock {
+            queue = append(queue, processes[0])
+            processes = processes[1:]
+        }
+
+        //Just to monitor fmt.Println("After moving to queue:", "Processes length:", len(processes), "Queue length:", len(queue))
+
+        if len(queue) == 0 {
+            clock++
+            continue
+        }
+
+        currentProcess := queue[0]
+        queue = queue[1:]
+
+        timeSlice := TimeSlice{
+            PID:   currentProcess.ProcessID,
+            Start: clock,
+        }
+
+        if currentProcess.BurstDuration > quantum {
+            timeSlice.Stop = clock + quantum
+            clock += quantum
+            currentProcess.BurstDuration -= quantum
+            queue = append(queue, currentProcess)
+        } else {
+            timeSlice.Stop = clock + currentProcess.BurstDuration
+            clock += currentProcess.BurstDuration
+            original := originalProcesses[currentProcess.ProcessID]
+            currentProcess.Exit = clock
+            currentProcess.Turnaround = clock - original.ArrivalTime
+            currentProcess.Wait = currentProcess.Turnaround - original.BurstDuration
+            schedule = append(schedule, currentProcess)
+            completed++
+        }
+
+        gantt = append(gantt, timeSlice)
+        fmt.Println("After processing process:", "Processes length:", len(processes), "Queue length:", len(queue))
+    }
+
+    // Compute averages
+    var totalWait, totalTurnaround int64 = 0, 0
+    for _, proc := range schedule {
+        totalWait += proc.Wait
+        totalTurnaround += proc.Turnaround
+    }
+
+    aveWait := float64(totalWait) / float64(completed)
+    aveTurnaround := float64(totalTurnaround) / float64(completed)
+    aveThroughput := float64(completed) / float64(clock)
+
+    // Convert schedule to [][]string format for output
+    rows := make([][]string, 0, len(schedule))
+    for _, proc := range schedule {
+        row := []string{
+            strconv.FormatInt(proc.ProcessID, 10),
+            strconv.FormatInt(proc.Priority, 10),
+            strconv.FormatInt(originalProcesses[proc.ProcessID].BurstDuration, 10), // Original burst time
+            strconv.FormatInt(proc.ArrivalTime, 10),
+            strconv.FormatInt(proc.Wait, 10),
+            strconv.FormatInt(proc.Turnaround, 10),
+            strconv.FormatInt(proc.Exit, 10),
+        }
+        rows = append(rows, row)
+    }
+
+    // Output
+    outputTitle(w, title)
+    outputGantt(w, gantt)
+    outputSchedule(w, rows, aveWait, aveTurnaround, aveThroughput)
+}
 
 //endregion
 

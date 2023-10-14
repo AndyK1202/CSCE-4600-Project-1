@@ -62,6 +62,8 @@ func TestFCFSSchedule(t *testing.T) {
 			}
 		})
 	}
+	
+
 }
 
 func Test_loadProcesses(t *testing.T) {
