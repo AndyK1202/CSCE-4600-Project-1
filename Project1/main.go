@@ -33,7 +33,7 @@ func main() {
 
 	//SJFSchedule(os.Stdout, "Shortest-job-first", processes)
 	//
-	
+	SJFSchedule(os.Stdout, "Shortest-job-first", processes)
 
 	//SJFPrioritySchedule(os.Stdout, "Priority", processes)
 	//
@@ -140,6 +140,64 @@ func FCFSSchedule(w io.Writer, title string, processes []Process) {
 //
 //func SJFSchedule(w io.Writer, title string, processes []Process) { }
 //
+func SJFSchedule(w io.Writer, title string, processes []Process) {
+    sort.SliceStable(processes, func(i, j int) bool {
+        return processes[i].BurstDuration < processes[j].BurstDuration
+    })
+
+    var (
+        currentTime      int64
+        totalWait        float64
+        totalTurnaround  float64
+        gantt            = make([]TimeSlice, 0)
+        schedule         = make([][]string, len(processes))
+    )
+
+    for i := range processes {
+        waitingTime := currentTime - processes[i].ArrivalTime
+        if waitingTime < 0 {
+            waitingTime = 0
+            currentTime = processes[i].ArrivalTime
+        }
+        totalWait += float64(waitingTime)
+
+        start := currentTime
+
+        turnaround := processes[i].BurstDuration + waitingTime
+        totalTurnaround += float64(turnaround)
+
+        completion := currentTime + processes[i].BurstDuration
+
+        schedule[i] = []string{
+            fmt.Sprint(processes[i].ProcessID),
+            fmt.Sprint(processes[i].Priority),
+            fmt.Sprint(processes[i].BurstDuration),
+            fmt.Sprint(processes[i].ArrivalTime),
+            fmt.Sprint(waitingTime),
+            fmt.Sprint(turnaround),
+            fmt.Sprint(completion),
+        }
+
+        gantt = append(gantt, TimeSlice{
+            PID:   processes[i].ProcessID,
+            Start: start,
+            Stop:  completion,
+        })
+
+        currentTime = completion
+    }
+
+    count := float64(len(processes))
+    aveWait := totalWait / count
+    aveTurnaround := totalTurnaround / count
+    aveThroughput := count / float64(currentTime)
+
+    outputTitle(w, title)
+    outputGantt(w, gantt)
+    outputSchedule(w, schedule, aveWait, aveTurnaround, aveThroughput)
+}
+
+
 //func RRSchedule(w io.Writer, title string, processes []Process) { }
 func RRSchedule(w io.Writer, title string, processes []Process) {
     var clock int64 = 0
