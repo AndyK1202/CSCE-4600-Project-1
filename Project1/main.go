@@ -37,9 +37,14 @@ func main() {
 
 	//SJFPrioritySchedule(os.Stdout, "Priority", processes)
 	//
-	
+	SJFPrioritySchedule(os.Stdout, "Shortest-job-first with Priority", processes)
 	//RRSchedule(os.Stdout, "Round-robin", processes)
 	RRSchedule(os.Stdout, "Round-robin", processes)
+
+
+
+	
+
 }
 
 func openProcessingFile(args ...string) (*os.File, func(), error) {
@@ -75,7 +80,11 @@ type (
 		Start int64
 		Stop  int64
 	}
-	
+	Gantt struct {
+		PID   int64
+		Start int64
+		Stop  int64
+	}
 )
 
 //region Schedulers
@@ -138,6 +147,98 @@ func FCFSSchedule(w io.Writer, title string, processes []Process) {
 
 //func SJFPrioritySchedule(w io.Writer, title string, processes []Process) { }
 //
+func SJFPrioritySchedule(w io.Writer, title string, processes []Process) {
+    var currentTime int64
+    var completedProcesses int = 0
+    var isRunning bool = false
+    var currentProcess Process
+    var remainingTime int64
+    var queue []Process
+    var gantt []TimeSlice
+    var totalWaitingTime int64
+    var totalTurnaroundTime int64
+
+    // Create deep copy of processes to calculate waiting and turnaround times later
+    originalProcesses := make([]Process, len(processes))
+    copy(originalProcesses, processes)
+
+    // Main loop runs until all processes are executed
+    for completedProcesses < len(processes) {
+        for _, p := range processes {
+            if p.ArrivalTime == currentTime {
+                queue = append(queue, p)
+            }
+        }
+
+        if isRunning {
+            if remainingTime == 0 {
+                isRunning = false
+                completedProcesses++
+                for i, op := range originalProcesses {
+                    if op.ProcessID == currentProcess.ProcessID {
+                        originalProcesses[i].Exit = currentTime
+                        break
+                    }
+                }
+                gantt = append(gantt, TimeSlice{PID: currentProcess.ProcessID, Start: currentTime - currentProcess.BurstDuration, Stop: currentTime})
+            }
+        }
+
+        // If no process is currently running, pick the shortest process with highest priority
+        if !isRunning && len(queue) != 0 {
+            // Sort the queue based on burst time and then priority
+            sort.SliceStable(queue, func(i, j int) bool {
+                if queue[i].BurstDuration == queue[j].BurstDuration {
+                    return queue[i].Priority < queue[j].Priority
+                }
+                return queue[i].BurstDuration < queue[j].BurstDuration
+            })
+            currentProcess = queue[0]
+            remainingTime = currentProcess.BurstDuration
+            isRunning = true
+            queue = queue[1:] // Dequeue the current process
+        } else if isRunning {
+            remainingTime--
+        }
+
+        currentTime++
+    }
+
+    // Calculate waiting and turnaround times
+    for _, p := range originalProcesses {
+        turnaroundTime := p.Exit - p.ArrivalTime
+        waitingTime := turnaroundTime - p.BurstDuration
+        totalWaitingTime += waitingTime
+        totalTurnaroundTime += turnaroundTime
+    }
+
+    aveWait := float64(totalWaitingTime) / float64(len(processes))
+    aveTurnaround := float64(totalTurnaroundTime) / float64(len(processes))
+    aveThroughput := float64(len(processes)) / float64(currentTime)
+
+    // Convert originalProcesses to [][]string format for output
+    rows := make([][]string, len(originalProcesses))
+    for i, p := range originalProcesses {
+        rows[i] = []string{
+            fmt.Sprint(p.ProcessID),
+            fmt.Sprint(p.Priority),
+            fmt.Sprint(p.BurstDuration),
+            fmt.Sprint(p.ArrivalTime),
+            fmt.Sprint(p.Exit - p.ArrivalTime - p.BurstDuration), // Wait time
+            fmt.Sprint(p.Exit - p.ArrivalTime),                   // Turnaround time
+            fmt.Sprint(p.Exit),
+        }
+    }
+
+    // Output results
+    outputTitle(w, title)
+    outputGantt(w, gantt)
+    outputSchedule(w, rows, aveWait, aveTurnaround, aveThroughput)
+}
+
+
+
+
 //func SJFSchedule(w io.Writer, title string, processes []Process) { }
 //
 func SJFSchedule(w io.Writer, title string, processes []Process) {
@@ -220,7 +321,7 @@ func RRSchedule(w io.Writer, title string, processes []Process) {
 
     for len(processes) > 0 || len(queue) > 0 {
         //Monitor fmt.Println("Inside main loop")
-        fmt.Printf("Processes length: %d, Queue length: %d\n", len(processes), len(queue))
+        //fmt.Printf("Processes length: %d, Queue length: %d\n", len(processes), len(queue))
 
         for len(processes) > 0 && processes[0].ArrivalTime <= clock {
             queue = append(queue, processes[0])
@@ -259,7 +360,7 @@ func RRSchedule(w io.Writer, title string, processes []Process) {
         }
 
         gantt = append(gantt, timeSlice)
-        fmt.Println("After processing process:", "Processes length:", len(processes), "Queue length:", len(queue))
+       //fmt.Println("After processing process:", "Processes length:", len(processes), "Queue length:", len(queue))
     }
 
     // Compute averages
